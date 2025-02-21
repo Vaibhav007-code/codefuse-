@@ -102,9 +102,13 @@ export const checkReminders = () => {
   localStorage.setItem('contestReminders', JSON.stringify(reminders));
 };
 
-export default {
-  fetchContests,
-  PLATFORM_COLORS,
-  PLATFORMS,
-  CONTEST_STATUS
-};
+const api = {
+    fetchContests,
+    setContestReminder,
+    getReminders,
+    PLATFORM_COLORS,
+    PLATFORMS,
+    CONTEST_STATUS
+  };
+  
+  export default api;
