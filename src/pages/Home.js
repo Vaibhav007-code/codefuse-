@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Spinner, Form, Row, Col } from 'react-bootstrap';
 import ContestList from '../components/ContestList';
-import { PLATFORMS, CONTEST_STATUS } from '../utils/api';
+import { fetchContests, PLATFORMS, CONTEST_STATUS } from '../utils/api';
 import { useTheme } from '../context/ThemeContext';
 
 const Home = () => {
