@@ -1,6 +1,6 @@
-/* eslint-disable import/no-anonymous-default-export */
 import axios from 'axios';
 
+// Platform configurations
 export const PLATFORM_COLORS = {
   CodeForces: '#1ba94c',
   CodeChef: '#5b4638',
@@ -22,20 +22,23 @@ export const CONTEST_STATUS = {
   PAST: 'Past'
 };
 
+// Helper functions
 const processContests = (platform, data) => {
   if (!data) return [];
 
   switch(platform) {
     case PLATFORMS.CODEFORCES:
-      return (data.result || []).filter(c => c.phase !== 'FINISHED').map(c => ({
-        id: `cf-${c.id}`,
-        name: c.name,
-        url: `https://codeforces.com/contests/${c.id}`,
-        start_time: (c.startTimeSeconds || 0) * 1000,
-        end_time: ((c.startTimeSeconds || 0) + (c.durationSeconds || 0)) * 1000,
-        platform: PLATFORMS.CODEFORCES,
-        status: c.phase === 'BEFORE' ? 'UPCOMING' : 'ACTIVE'
-      }));
+      return (data.result || [])
+        .filter(c => c.phase !== 'FINISHED')
+        .map(c => ({
+          id: `cf-${c.id}`,
+          name: c.name,
+          url: `https://codeforces.com/contests/${c.id}`,
+          start_time: (c.startTimeSeconds || 0) * 1000,
+          end_time: ((c.startTimeSeconds || 0) + (c.durationSeconds || 0)) * 1000,
+          platform: PLATFORMS.CODEFORCES,
+          status: c.phase === 'BEFORE' ? 'UPCOMING' : 'ACTIVE'
+        }));
 
     case PLATFORMS.CODECHEF:
       return [
@@ -52,32 +55,32 @@ const processContests = (platform, data) => {
       }));
 
     case PLATFORMS.LEETCODE:
-      return (data.contests || []).filter(c => c.start_time).map(c => ({
-        id: `lc-${c.titleSlug}`,
-        name: c.title,
-        url: `https://leetcode.com/contest/${c.titleSlug}`,
-        start_time: (c.start_time || 0) * 1000,
-        end_time: ((c.start_time || 0) + (c.duration || 0)) * 1000,
-        platform: PLATFORMS.LEETCODE,
-        status: Date.now() < (c.start_time * 1000) ? 'UPCOMING' : 'ACTIVE'
-      }));
+      return (data.contests || [])
+        .filter(c => c.start_time)
+        .map(c => ({
+          id: `lc-${c.titleSlug}`,
+          name: c.title,
+          url: `https://leetcode.com/contest/${c.titleSlug}`,
+          start_time: (c.start_time || 0) * 1000,
+          end_time: ((c.start_time || 0) + (c.duration || 0)) * 1000,
+          platform: PLATFORMS.LEETCODE,
+          status: Date.now() < (c.start_time * 1000) ? 'UPCOMING' : 'ACTIVE'
+        }));
 
     default: return [];
   }
 };
 
+// API functions
 export const fetchContests = async () => {
   try {
-    const response = await axios.get('http://localhost:3001/api/contests');
-    
-    const codeforcesData = response.data.data.codeforces || {};
-    const codechefData = response.data.data.codechef || {};
-    const leetcodeData = response.data.data.leetcode || {};
+    const response = await axios.get('/api/contests');
+    const { codeforces, codechef, leetcode } = response.data.data;
 
     const allContests = [
-      ...processContests(PLATFORMS.CODEFORCES, codeforcesData),
-      ...processContests(PLATFORMS.CODECHEF, codechefData),
-      ...processContests(PLATFORMS.LEETCODE, leetcodeData)
+      ...processContests(PLATFORMS.CODEFORCES, codeforces),
+      ...processContests(PLATFORMS.CODECHEF, codechef),
+      ...processContests(PLATFORMS.LEETCODE, leetcode)
     ].sort((a, b) => a.start_time - b.start_time);
 
     return { success: true, data: allContests };
@@ -101,13 +104,4 @@ export const checkReminders = () => {
     if (time <= now) delete reminders[id];
   });
   localStorage.setItem('contestReminders', JSON.stringify(reminders));
-};
-
-export default {
-  fetchContests,
-  setContestReminder,
-  checkReminders,
-  PLATFORM_COLORS,
-  PLATFORMS,
-  CONTEST_STATUS
 };
