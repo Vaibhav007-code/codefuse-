@@ -24,11 +24,16 @@ export const CONTEST_STATUS = {
 
 // Create axios instance with configuration
 const axiosInstance = axios.create({
-  timeout: 15000,
+  timeout: 30000, // Increased timeout to 30 seconds
   headers: {
     'Content-Type': 'application/json'
   }
 });
+
+// Set base URL based on environment
+axiosInstance.defaults.baseURL = process.env.NEXT_PUBLIC_API_URL || 
+                                process.env.REACT_APP_API_URL || 
+                                '/api';
 
 // Error handler helper
 const handleApiError = (error) => {
@@ -99,10 +104,10 @@ const processContests = (platform, data) => {
   }
 };
 
-// Main API functions
-export const fetchContests = async () => {
+// Main API functions with retry mechanism
+export const fetchContests = async (retries = 2) => {
   try {
-    const response = await axiosInstance.get('/api/contests');
+    const response = await axiosInstance.get('/contests');
     
     if (!response.data.success) {
       throw new Error(response.data.message || 'Failed to fetch contests');
@@ -118,11 +123,15 @@ export const fetchContests = async () => {
 
     return { success: true, data: allContests };
   } catch (error) {
+    if (retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return fetchContests(retries - 1);
+    }
     return handleApiError(error);
   }
 };
 
-// Reminder management functions
+// Reminder management functions remain unchanged
 export const setContestReminder = (contestId, reminderTime) => {
   try {
     const reminders = JSON.parse(localStorage.getItem('contestReminders') || '{}');

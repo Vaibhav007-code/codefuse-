@@ -1,18 +1,22 @@
+// server/proxy.js
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+
 const app = express();
 
-// Configure CORS
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'OPTIONS'],
-  credentials: true
-}));
+// CORS configuration is handled by Vercel.json, but we'll keep this for local development
+if (process.env.NODE_ENV !== 'production') {
+  app.use(cors({
+    origin: '*',
+    methods: ['GET', 'OPTIONS'],
+    credentials: true
+  }));
+}
 
-// Configure axios instance with timeout
+// Configure axios instance with timeout and retries
 const axiosInstance = axios.create({
-  timeout: 10000, // 10 seconds
+  timeout: 8000, // 8 seconds timeout
   headers: {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
   }
@@ -24,44 +28,56 @@ const PLATFORM_APIS = {
   LEETCODE: 'https://leetcode.com/contest/api/list/'
 };
 
+// Helper function to fetch with timeout and retry
+async function fetchWithRetry(platform, retries = 2) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const response = await axiosInstance.get(PLATFORM_APIS[platform]);
+      return { success: true, data: response.data };
+    } catch (error) {
+      if (i === retries) {
+        console.error(`Failed to fetch ${platform} after ${retries} retries:`, error.message);
+        return { success: false, data: null };
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000 * i)); // Exponential backoff
+    }
+  }
+}
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Main contests endpoint
 app.get('/api/contests', async (req, res) => {
   try {
-    // Fetch data from all platforms concurrently
-    const results = await Promise.allSettled([
-      axiosInstance.get(PLATFORM_APIS.CODEFORCES),
-      axiosInstance.get(PLATFORM_APIS.CODECHEF),
-      axiosInstance.get(PLATFORM_APIS.LEETCODE)
+    // Fetch all platforms concurrently with individual timeouts and retries
+    const [codeforces, codechef, leetcode] = await Promise.all([
+      fetchWithRetry('CODEFORCES'),
+      fetchWithRetry('CODECHEF'),
+      fetchWithRetry('LEETCODE')
     ]);
 
-    // Process results and handle errors for each platform
-    const [codeforces, codechef, leetcode] = results.map(result => {
-      if (result.status === 'fulfilled') {
-        return result.value.data;
-      }
-      console.error(`API Error: ${result.reason}`);
-      return null;
-    });
-
-    res.json({
+    // Even if some platforms fail, return what we have
+    const response = {
       success: true,
       timestamp: new Date().toISOString(),
       data: {
-        codeforces,
-        codechef,
-        leetcode
+        codeforces: codeforces.success ? codeforces.data : null,
+        codechef: codechef.success ? codechef.data : null,
+        leetcode: leetcode.success ? leetcode.data : null
       }
-    });
-  } catch (error) {
-    console.error('Server Error:', {
-      message: error.message,
-      stack: error.stack
-    });
+    };
 
+    // Check if we got at least some data
+    if (!codeforces.success && !codechef.success && !leetcode.success) {
+      throw new Error('Failed to fetch data from all platforms');
+    }
+
+    res.json(response);
+  } catch (error) {
+    console.error('Server Error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch contest data',
@@ -69,6 +85,11 @@ app.get('/api/contests', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
+});
+
+// Options pre-flight
+app.options('*', (req, res) => {
+  res.status(200).end();
 });
 
 // Error handling middleware
