@@ -8,7 +8,7 @@
     {
       "src": "package.json",
       "use": "@vercel/static-build",
-      "config": { 
+      "config": {
         "distDir": "build"
       }
     }
@@ -19,15 +19,15 @@
       "dest": "api/proxy.js"
     },
     {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*).(js|css|json|ico|png)",
-      "dest": "/build/$1.$2"
+      "src": "/(.*\\.(js|css|json|ico|png|svg))",
+      "dest": "/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/build/index.html"
+      "dest": "/index.html",
+      "headers": {
+        "Cache-Control": "s-maxage=0, stale-while-revalidate=60"
+      }
     }
   ]
 }
