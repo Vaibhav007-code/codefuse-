@@ -3,14 +3,20 @@ const axios = require('axios');
 const cors = require('cors');
 const app = express();
 
+// Configure CORS
 app.use(cors({
-  origin: [
-    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000',
-    'https://codefuse.vercel.app'
-  ],
-  methods: ['GET'],
+  origin: '*',
+  methods: ['GET', 'OPTIONS'],
   credentials: true
 }));
+
+// Configure axios instance with timeout
+const axiosInstance = axios.create({
+  timeout: 10000, // 10 seconds
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+  }
+});
 
 const PLATFORM_APIS = {
   CODEFORCES: 'https://codeforces.com/api/contest.list',
@@ -18,39 +24,61 @@ const PLATFORM_APIS = {
   LEETCODE: 'https://leetcode.com/contest/api/list/'
 };
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 app.get('/api/contests', async (req, res) => {
   try {
-    const [codeforces, codechef, leetcode] = await Promise.allSettled([
-      axios.get(PLATFORM_APIS.CODEFORCES),
-      axios.get(PLATFORM_APIS.CODECHEF, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-      }),
-      axios.get(PLATFORM_APIS.LEETCODE)
+    // Fetch data from all platforms concurrently
+    const results = await Promise.allSettled([
+      axiosInstance.get(PLATFORM_APIS.CODEFORCES),
+      axiosInstance.get(PLATFORM_APIS.CODECHEF),
+      axiosInstance.get(PLATFORM_APIS.LEETCODE)
     ]);
+
+    // Process results and handle errors for each platform
+    const [codeforces, codechef, leetcode] = results.map(result => {
+      if (result.status === 'fulfilled') {
+        return result.value.data;
+      }
+      console.error(`API Error: ${result.reason}`);
+      return null;
+    });
 
     res.json({
       success: true,
+      timestamp: new Date().toISOString(),
       data: {
-        codeforces: codeforces.status === 'fulfilled' ? codeforces.value.data : null,
-        codechef: codechef.status === 'fulfilled' ? codechef.value.data : null,
-        leetcode: leetcode.status === 'fulfilled' ? leetcode.value.data : null
+        codeforces,
+        codechef,
+        leetcode
       }
     });
   } catch (error) {
-    console.error('Server Error:', error);
-    res.status(500).json({ 
-      success: false, 
+    console.error('Server Error:', {
+      message: error.message,
+      stack: error.stack
+    });
+
+    res.status(500).json({
+      success: false,
       message: 'Failed to fetch contest data',
-      error: error.message 
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Global error handler:', err);
+  res.status(500).json({
+    success: false,
+    message: 'Internal server error',
+    error: err.message
+  });
 });
 
 module.exports = app;
