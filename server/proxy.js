@@ -1,20 +1,23 @@
-// server/proxy.js
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const serverless = require('serverless-http');
 
 const app = express();
 
-// Basic CORS setup for development
-app.use(cors());
+// Enhanced CORS configuration
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'OPTIONS'],
+  allowedHeaders: ['Content-Type']
+}));
 
-// Configure axios instance
+// Configure axios instance with platform-specific headers
 const axiosInstance = axios.create({
-  timeout: 8000,
+  timeout: 15000,
   headers: {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
+    'Accept': 'application/json'
   }
 });
 
@@ -24,7 +27,7 @@ const PLATFORM_APIS = {
   LEETCODE: 'https://leetcode.com/contest/api/list/'
 };
 
-// Helper function to fetch data with retries
+// Improved fetch function with platform validation
 async function fetchPlatformData(platform) {
   const url = PLATFORM_APIS[platform];
   let attempts = 3;
@@ -32,21 +35,30 @@ async function fetchPlatformData(platform) {
   while (attempts > 0) {
     try {
       const response = await axiosInstance.get(url);
+      
+      // Platform-specific response validation
+      if (platform === 'CODEFORCES' && response.data.status !== 'OK') {
+        throw new Error('Codeforces API returned non-OK status');
+      }
+      if (platform === 'CODECHEF' && !response.data.future_contests) {
+        throw new Error('Invalid CodeChef response structure');
+      }
+      
       return { success: true, data: response.data };
     } catch (error) {
       attempts--;
       if (attempts === 0) {
         console.error(`Failed to fetch ${platform}:`, error.message);
-        return { success: false, data: null };
+        return { success: false, data: null, error: error.message };
       }
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
 }
 
-// Simple request logger middleware
+// Request logging middleware
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
   next();
 });
 
@@ -59,57 +71,50 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Main contests endpoint
+// Main contests endpoint with improved error handling
 app.get('/api/contests', async (req, res) => {
-  console.log('Fetching contests...');
-  
   try {
-    const platforms = ['CODEFORCES', 'CODECHEF', 'LEETCODE'];
-    const results = await Promise.all(
-      platforms.map(platform => fetchPlatformData(platform))
-    );
+    const [codeforces, codechef, leetcode] = await Promise.all([
+      fetchPlatformData('CODEFORCES'),
+      fetchPlatformData('CODECHEF'),
+      fetchPlatformData('LEETCODE')
+    ]);
 
-    const data = {
-      codeforces: results[0].data,
-      codechef: results[1].data,
-      leetcode: results[2].data
-    };
-
-    // Check if we got any data
-    const hasAnyData = Object.values(data).some(d => d !== null);
-    
-    if (!hasAnyData) {
-      throw new Error('Failed to fetch data from all platforms');
-    }
-
-    res.json({
+    const responseData = {
       success: true,
       timestamp: new Date().toISOString(),
-      data
+      data: {
+        codeforces: codeforces.data,
+        codechef: codechef.data,
+        leetcode: leetcode.data
+      },
+      errors: []
+    };
+
+    // Collect errors without failing the entire request
+    [codeforces, codechef, leetcode].forEach((result, index) => {
+      if (!result.success) {
+        responseData.errors.push({
+          platform: ['CODEFORCES', 'CODECHEF', 'LEETCODE'][index],
+          message: result.error
+        });
+      }
     });
+
+    res.status(responseData.errors.length === 3 ? 503 : 200).json(responseData);
   } catch (error) {
-    console.error('Error fetching contests:', error);
+    console.error('Error in contests endpoint:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch contest data',
+      message: 'Internal server error',
       error: error.message
     });
   }
 });
 
-// Handle pre-flight requests
-app.options('*', (req, res) => {
-  res.status(200).end();
-});
-
-// Error handling
-app.use((err, req, res, next) => {
-  console.error('Global error handler:', err);
-  res.status(500).json({
-    success: false,
-    message: 'Internal server error',
-    error: err.message
-  });
-});
-
-module.exports = app;
+// Export for Vercel serverless
+const handler = serverless(app);
+module.exports = {
+  handler,
+  app
+};

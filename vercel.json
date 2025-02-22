@@ -3,34 +3,17 @@
   "builds": [
     {
       "src": "server/proxy.js",
-      "use": "@vercel/node",
-      "config": {
-        "maxDuration": 10
-      }
-    },
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": { 
-        "distDir": "build",
-        "buildCommand": "npm run build"
-      }
+      "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/server/proxy.js",
-      "methods": ["GET", "OPTIONS"],
-      "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization"
-      }
+      "dest": "server/proxy.js"
     },
     {
       "src": "/(.*)",
-      "dest": "/build/$1"
+      "dest": "public/$1"
     }
   ]
 }
