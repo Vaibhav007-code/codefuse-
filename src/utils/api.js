@@ -1,5 +1,6 @@
 import axios from 'axios';
 
+// Platform configurations remain the same
 export const PLATFORM_COLORS = {
   CodeForces: '#1ba94c',
   CodeChef: '#5b4638',
@@ -21,35 +22,102 @@ export const CONTEST_STATUS = {
   PAST: 'Past'
 };
 
+// Create axios instance with detailed error logging
 const axiosInstance = axios.create({
-  timeout: 30000,
+  baseURL: '/api',  // This will be relative to wherever the app is hosted
+  timeout: 15000,
   headers: {
-    'Content-Type': 'application/json'
-  },
-  baseURL: process.env.NODE_ENV === 'production'
-    ? 'https://your-vercel-app.vercel.app/api' // Update with your Vercel URL
-    : '/api'
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  }
 });
 
-const handleApiError = (error) => {
-  console.error('API Error:', {
-    config: error.config,
-    response: error.response
-  });
-  return {
-    success: false,
-    data: [],
-    message: error.response?.data?.message || error.message || 'Network error'
-  };
+// Add request interceptor for debugging
+axiosInstance.interceptors.request.use(
+  config => {
+    console.log('Making request to:', config.url);
+    return config;
+  },
+  error => {
+    console.error('Request error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for debugging
+axiosInstance.interceptors.response.use(
+  response => {
+    console.log('Received response:', response.status);
+    return response;
+  },
+  error => {
+    console.error('Response error:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      url: error.config?.url
+    });
+    return Promise.reject(error);
+  }
+);
+
+// Main API function with improved error handling
+export const fetchContests = async () => {
+  console.log('Fetching contests...');
+  try {
+    // First try health check
+    try {
+      const healthCheck = await axiosInstance.get('/health');
+      console.log('Health check response:', healthCheck.data);
+    } catch (healthError) {
+      console.error('Health check failed:', healthError);
+    }
+
+    // Then fetch contests
+    const response = await axiosInstance.get('/contests');
+    
+    if (!response.data.success) {
+      throw new Error(response.data.message || 'Failed to fetch contests');
+    }
+
+    console.log('Raw contest data:', response.data);
+
+    const { codeforces, codechef, leetcode } = response.data.data;
+
+    const allContests = [
+      ...processContests(PLATFORMS.CODEFORCES, codeforces),
+      ...processContests(PLATFORMS.CODECHEF, codechef),
+      ...processContests(PLATFORMS.LEETCODE, leetcode)
+    ].sort((a, b) => a.start_time - b.start_time);
+
+    console.log('Processed contests:', allContests.length);
+    return { success: true, data: allContests };
+  } catch (error) {
+    console.error('Fetch contests error details:', {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data
+    });
+    return {
+      success: false,
+      data: [],
+      message: error.response?.data?.message || error.message || 'Failed to fetch contests'
+    };
+  }
 };
 
+// Process contests helper function
 const processContests = (platform, data) => {
-  if (!data) return [];
+  if (!data) {
+    console.log(`No data for ${platform}`);
+    return [];
+  }
 
   try {
+    let processed = [];
     switch(platform) {
       case PLATFORMS.CODEFORCES:
-        return (data.result || [])
+        processed = (data.result || [])
           .filter(c => c.phase !== 'FINISHED')
           .map(c => ({
             id: `cf-${c.id}`,
@@ -60,9 +128,10 @@ const processContests = (platform, data) => {
             platform: PLATFORMS.CODEFORCES,
             status: c.phase === 'BEFORE' ? 'UPCOMING' : 'ACTIVE'
           }));
+        break;
 
       case PLATFORMS.CODECHEF:
-        return [
+        processed = [
           ...(data.future_contests || []),
           ...(data.present_contests || [])
         ].map(c => ({
@@ -74,9 +143,10 @@ const processContests = (platform, data) => {
           platform: PLATFORMS.CODECHEF,
           status: c.contest_status === 'Upcoming' ? 'UPCOMING' : 'ACTIVE'
         }));
+        break;
 
       case PLATFORMS.LEETCODE:
-        return (data.contests || [])
+        processed = (data.contests || [])
           .filter(c => c.start_time)
           .map(c => ({
             id: `lc-${c.titleSlug}`,
@@ -87,40 +157,14 @@ const processContests = (platform, data) => {
             platform: PLATFORMS.LEETCODE,
             status: Date.now() < (c.start_time * 1000) ? 'UPCOMING' : 'ACTIVE'
           }));
-
-      default:
-        return [];
+        break;
     }
+    console.log(`Processed ${processed.length} contests for ${platform}`);
+    return processed;
   } catch (error) {
-    console.error(`Processing error for ${platform}:`, error);
+    console.error(`Error processing ${platform} contests:`, error);
     return [];
   }
 };
 
-export const fetchContests = async (retries = 2) => {
-  try {
-    const response = await axiosInstance.get('/contests');
-    
-    if (!response.data.success) {
-      throw new Error(response.data.message || 'API returned unsuccessful response');
-    }
-
-    const allContests = [
-      ...processContests(PLATFORMS.CODEFORCES, response.data.data.codeforces),
-      ...processContests(PLATFORMS.CODECHEF, response.data.data.codechef),
-      ...processContests(PLATFORMS.LEETCODE, response.data.data.leetcode)
-    ].sort((a, b) => a.start_time - b.start_time);
-
-    return { 
-      success: true, 
-      data: allContests,
-      errors: response.data.errors || []
-    };
-  } catch (error) {
-    if (retries > 0) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return fetchContests(retries - 1);
-    }
-    return handleApiError(error);
-  }
-};
+// Rest of the reminder functions remain the same...
