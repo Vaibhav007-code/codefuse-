@@ -8,7 +8,8 @@ app.use(cors({
     process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000',
     'https://codefuse.vercel.app'
   ],
-  methods: ['GET']
+  methods: ['GET'],
+  credentials: true
 }));
 
 const PLATFORM_APIS = {
@@ -38,8 +39,18 @@ app.get('/api/contests', async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Server Error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch contest data',
+      error: error.message 
+    });
   }
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
 });
 
 module.exports = app;

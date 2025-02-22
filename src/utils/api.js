@@ -1,5 +1,10 @@
 import axios from 'axios';
 
+// Base URL configuration
+const BASE_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://codefuse.vercel.app'
+  : '';
+
 // Platform configurations
 export const PLATFORM_COLORS = {
   CodeForces: '#1ba94c',
@@ -48,8 +53,8 @@ const processContests = (platform, data) => {
         id: `cc-${c.contest_code}`,
         name: c.contest_name,
         url: `https://www.codechef.com/${c.contest_code}`,
-        start_time: new Date(c.contest_start_date).getTime() || Date.now(),
-        end_time: new Date(c.contest_end_date).getTime() || Date.now(),
+        start_time: new Date(c.contest_start_date).getTime(),
+        end_time: new Date(c.contest_end_date).getTime(),
         platform: PLATFORMS.CODECHEF,
         status: c.contest_status === 'Upcoming' ? 'UPCOMING' : 'ACTIVE'
       }));
@@ -67,14 +72,20 @@ const processContests = (platform, data) => {
           status: Date.now() < (c.start_time * 1000) ? 'UPCOMING' : 'ACTIVE'
         }));
 
-    default: return [];
+    default:
+      return [];
   }
 };
 
 // API functions
 export const fetchContests = async () => {
   try {
-    const response = await axios.get('/api/contests');
+    const response = await axios.get(`${BASE_URL}/api/contests`);
+    
+    if (!response.data.success) {
+      throw new Error(response.data.message || 'Failed to fetch contests');
+    }
+
     const { codeforces, codechef, leetcode } = response.data.data;
 
     const allContests = [
@@ -86,22 +97,52 @@ export const fetchContests = async () => {
     return { success: true, data: allContests };
   } catch (error) {
     console.error('Error fetching contests:', error);
-    return { success: false, data: [], message: 'Failed to fetch contests' };
+    return { 
+      success: false, 
+      data: [], 
+      message: error.message || 'Failed to fetch contests' 
+    };
   }
 };
 
 export const setContestReminder = (contestId, reminderTime) => {
-  const reminders = JSON.parse(localStorage.getItem('contestReminders') || '{}');
-  reminders[contestId] = reminderTime.getTime();
-  localStorage.setItem('contestReminders', JSON.stringify(reminders));
-  return { success: true, message: 'Reminder set successfully' };
+  try {
+    const reminders = JSON.parse(localStorage.getItem('contestReminders') || '{}');
+    reminders[contestId] = reminderTime.getTime();
+    localStorage.setItem('contestReminders', JSON.stringify(reminders));
+    return { success: true, message: 'Reminder set successfully' };
+  } catch (error) {
+    console.error('Error setting reminder:', error);
+    return { success: false, message: 'Failed to set reminder' };
+  }
+};
+
+export const getContestReminder = (contestId) => {
+  try {
+    const reminders = JSON.parse(localStorage.getItem('contestReminders') || '{}');
+    return reminders[contestId] || null;
+  } catch {
+    return null;
+  }
 };
 
 export const checkReminders = () => {
-  const reminders = JSON.parse(localStorage.getItem('contestReminders') || '{}');
-  const now = Date.now();
-  Object.entries(reminders).forEach(([id, time]) => {
-    if (time <= now) delete reminders[id];
-  });
-  localStorage.setItem('contestReminders', JSON.stringify(reminders));
+  try {
+    const reminders = JSON.parse(localStorage.getItem('contestReminders') || '{}');
+    const now = Date.now();
+    let updated = false;
+
+    Object.entries(reminders).forEach(([id, time]) => {
+      if (time <= now) {
+        delete reminders[id];
+        updated = true;
+      }
+    });
+
+    if (updated) {
+      localStorage.setItem('contestReminders', JSON.stringify(reminders));
+    }
+  } catch (error) {
+    console.error('Error checking reminders:', error);
+  }
 };

@@ -1,0 +1,10 @@
+{
+    "name": "codefuse-server",
+    "version": "1.0.0",
+    "main": "proxy.js",
+    "dependencies": {
+      "express": "^4.17.1",
+      "axios": "^1.7.9",
+      "cors": "^2.8.5"
+    }
+  }
