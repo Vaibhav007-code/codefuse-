@@ -2,18 +2,32 @@
   "version": 2,
   "builds": [
     {
-      "src": "server/proxy.js",
+      "src": "api/proxy.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { 
+        "distDir": "build"
+      }
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "server/proxy.js"
+      "dest": "api/proxy.js"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*).(js|css|json|ico|png)",
+      "dest": "/build/$1.$2"
     },
     {
       "src": "/(.*)",
-      "dest": "public/$1"
+      "dest": "/build/index.html"
     }
   ]
 }
